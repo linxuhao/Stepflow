@@ -13,9 +13,19 @@ Under Developpement, no backward compatbility is needed.
 
 ## Build & Test
 
+Project uses `.venv/` at repo root (auto-detected by VS Code). First-time setup:
+
 ```bash
-pip install -e ~/stepflow
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ~/stepflow[dev]
+```
+
+Then:
+
+```bash
 pytest tests/ -v          # 306 tests
+pytest plugins/ -v        # 21 plugin tests
 ```
 
 ## Architecture

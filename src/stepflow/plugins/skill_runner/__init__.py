@@ -6,6 +6,14 @@ The agent never knows about the graph structure — stepflow handles
 gates, loops, checkpoints, and error routing behind the tool facade.
 """
 
+from pathlib import Path
+
 from stepflow.plugins.skill_runner.runner import SkillTool, SkillResponse, PromptAssembler
 
-__all__ = ["SkillTool", "SkillResponse", "PromptAssembler"]
+
+def load_agent_guide() -> str:
+    """Return the AGENT.md content — a user manual for LLM agents using run_skill."""
+    return (Path(__file__).parent / "AGENT.md").read_text(encoding="utf-8")
+
+
+__all__ = ["SkillTool", "SkillResponse", "PromptAssembler", "load_agent_guide"]

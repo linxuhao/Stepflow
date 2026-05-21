@@ -247,24 +247,62 @@ loader.add_tools_dir("my_app/tools")
 sf = StepFlow(":memory:", tool_loader=loader)
 ```
 
-## Plugins
+## Use Cases
 
-### Linter (`plugins/linter/`)
+### 1. Framework mode — embed stepflow in your app
 
-Validates stepflow pipeline YAML configs. Usable as a stepflow tool (`stepflow_lint`) or standalone:
+Use stepflow as a library. Read the [Getting Started](#getting-started) section above and the fixture examples in `tests/fixtures/`.
+
+```python
+from stepflow import StepFlow, PipelineGraph
+graph = PipelineGraph.from_yaml("my_pipeline.yaml")
+sf = StepFlow(":memory:")
+sf.register_graph(graph)
+# ... drive the loop with claim_next_step / confirm_step
+```
+
+### 2. Agent mode — convert skills to pipelines
+
+LLM agents use the **converter** + **runner** plugins to turn skill descriptions into stepflow pipelines. The agent calls a tool named `run_skill` repeatedly — the runner tells it what to do at each step.
+
+```python
+from stepflow.plugins.skill_converter import setup_converter
+from stepflow.plugins.skill_runner import load_agent_guide
+
+# Give the agent its user manual
+system_prompt = load_agent_guide()  # ← includes protocol, response format, rules
+
+tool = setup_converter(sf, description_file="my_skill.md")
+resp = tool(action="next")
+# ... agent loops: submit result → get next instruction → ...
+# resp.status == "completed" → pipeline YAML ready
+```
+
+Agent manuals are shipped in the package:
+
+| Plugin | Manual | How to load |
+|--------|--------|-------------|
+| `skill_runner` | Agent protocol — actions, SkillResponse format, rules | `load_agent_guide()` from `stepflow.plugins.skill_runner` |
+| `skill_converter` | Step-by-step guide — analyze → design → lint → fix | `load_agent_guide()` from `stepflow.plugins.skill_converter` |
+
+Inject the runner manual into the agent's system prompt. Inject the converter manual when the agent is asked to convert a skill.
+
+CLI tools for manual use:
+
+```bash
+stepflow-lint pipeline.yaml                # one-shot config validation
+stepflow-run pipeline.yaml                 # drive a pipeline interactively
+stepflow-convert my_skill.md -o out.yaml   # convert a skill description
+```
+
+### Linter (`stepflow.plugins.linter`)
+
+Framework utility. Validates pipeline YAML — used as a stepflow tool (`stepflow_lint`) inside the converter's feedback loop, or standalone:
 
 ```bash
 stepflow-lint tests/fixtures/skill_review.yaml
 stepflow-lint configs/*.yaml
 ```
-
-### Skill Runner (`plugins/skill_runner/`)
-
-Stateful callable wrapping a pipeline as an agent tool. Supports `next`, `submit`, `approve`, `reject` actions. Returns `SkillResponse` with instruction, available tools, and step metadata.
-
-### Skill Converter (`plugins/skill_converter/`)
-
-Meta-pipeline that converts a skill description into a stepflow YAML config. See `plugins/skill_converter/skill_converter.yaml`.
 
 ## Package
 

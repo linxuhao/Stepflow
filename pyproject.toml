@@ -32,13 +32,13 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+exclude = ["*.tests", "*.tests.*"]
 
 [tool.setuptools.package-data]
 "stepflow.tools" = ["*/tool.yaml"]
-"stepflow.plugins" = ["**/*.yaml", "**/*.md"]
-
-[tool.setuptools.exclude-package-data]
-"stepflow.plugins" = ["**/tests/*"]
+"stepflow.plugins.linter.tools" = ["*/tool.yaml"]
+"stepflow.plugins.skill_runner" = ["AGENT.md"]
+"stepflow.plugins.skill_converter" = ["AGENT.md", "*.yaml", "prompts/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
