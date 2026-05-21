@@ -1,6 +1,6 @@
 # CLAUDE.md — Skillflow
 
-Skillflow is a config-agnostic LLM pipeline graph executor. It is a pure Python library with zero dependencies beyond PyYAML.
+Skillflow is a config-agnostic LLM pipeline graph executor. It is a pure Python library with minimal dependencies (PyYAML, ruff).
 Under development, no backward compatibility is needed.
 
 ## Project Rules

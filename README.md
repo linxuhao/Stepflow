@@ -12,7 +12,7 @@ pip install -e ~/skillflow    # from repo (editable)
 Or clone and use the install script, which also registers CLI commands:
 
 ```bash
-git clone https://github.com/your-org/skillflow.git
+git clone https://github.com/linxuhao/SkillFlow.git
 bash skillflow/scripts/install.sh
 ```
 
