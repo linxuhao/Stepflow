@@ -137,6 +137,10 @@ class EndCondition:
               ``"max_run_duration"``, or ``"flag_match"``.
         node: For ``"node_reached"``: which node triggers termination.
         result: For ``"node_reached"``: ``"completed"`` or ``"failed"``.
+        require_completed: For ``"node_reached"``: if True, the node's
+              step must be in completed status before the condition fires.
+              Use this when the terminal node is a real agent step that
+              must execute before the pipeline ends.
         limit: For ``"max_total_steps"`` / ``"max_run_duration"``:
                the threshold value.
         flag: For ``"flag_match"``: flag key-values that trigger
@@ -146,6 +150,7 @@ class EndCondition:
     type: str
     node: str = ""
     result: str = "completed"
+    require_completed: bool = False
     limit: int = 0
     flag: dict[str, Any] = field(default_factory=dict)
 
@@ -266,6 +271,7 @@ class PipelineGraph:
                         type=c["type"],
                         node=c.get("node", ""),
                         result=c.get("result", "completed"),
+                        require_completed=c.get("require_completed", False),
                         limit=c.get("limit", 0),
                         flag=c.get("flag", {}),
                     )
@@ -356,6 +362,7 @@ class PipelineGraph:
                     {"type": c.type}
                     | ({"node": c.node} if c.node else {})
                     | ({"result": c.result} if c.result != "completed" else {})
+                    | ({"require_completed": True} if c.require_completed else {})
                     | ({"limit": c.limit} if c.limit else {})
                     | ({"flag": c.flag} if c.flag else {})
                     for c in self.end_conditions.conditions

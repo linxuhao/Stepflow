@@ -369,20 +369,58 @@ class SkillFlow:
         self._update_run_state(run_id, "running")
 
     def reactivate_run(self, run_id: str) -> None:
-        """Reactivate a failed/completed run back to running state.
+        """Reactivate a failed run back to running state.
 
-        Used when a host app detects new work (e.g. new tasks added)
-        and needs to restart a previously finished pipeline run.
-        Clears error_reason and current_node so advance_run re-resolves
-        from the last completed step.
+        Used when a host app detects new work and needs to restart
+        a previously failed pipeline run. Clears error_reason and
+        current_node so advance_run re-resolves from the last
+        completed step.
+
+        Raises ValueError if the run is already completed. Use
+        re_run() to explicitly restart a completed run.
         """
         with self._tx() as conn:
+            run = conn.execute(
+                "SELECT status FROM skillflow_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+            if not run:
+                raise ValueError(f"Run not found: {run_id}")
+            if run["status"] == "completed":
+                raise ValueError(
+                    f"Run {run_id} is already completed. "
+                    f"Use re_run() to explicitly re-run a completed pipeline."
+                )
             conn.execute(
                 """UPDATE skillflow_runs SET status = 'running',
                    error_reason = NULL, current_node = NULL,
                    updated_at = datetime('now') WHERE id = ?""",
                 (run_id,),
             )
+
+    def re_run(self, run_id: str) -> str:
+        """Explicitly restart a completed/failed run as a fresh run.
+
+        Creates a NEW run_id with the same graph and project,
+        resetting all step state. Returns the new run_id.
+        """
+        with self._tx() as conn:
+            old = conn.execute(
+                "SELECT graph_name, graph_path, project_id, context_json "
+                "FROM skillflow_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+            if not old:
+                raise ValueError(f"Run not found: {run_id}")
+
+        import json
+        ctx = json.loads(old["context_json"]) if old["context_json"] else {}
+        new_id = self.create_run(
+            old["graph_name"],
+            context=ctx,
+            project_id=old["project_id"],
+            graph_path=old["graph_path"],
+        )
+        self.start_run(new_id)
+        return new_id
 
     def fail_run(self, run_id: str, reason: str) -> None:
         with self._tx() as conn:
@@ -1382,7 +1420,13 @@ class SkillFlow:
                 items = flat
 
             if not items:
-                # Empty list → route to done transition (non-body)
+                # Empty list → mark loop step completed, route to done transition
+                conn.execute(
+                    "UPDATE skillflow_steps SET status = 'completed', "
+                    "completed_at = datetime('now'), updated_at = datetime('now') "
+                    "WHERE run_id = ? AND step_id = ? AND status = 'pending'",
+                    (run["id"], loop_step_id),
+                )
                 for t in node.transitions:
                     if t.to and t.to != body_target:
                         return t.to
@@ -1405,7 +1449,13 @@ class SkillFlow:
             )
 
         if current_idx >= len(items):
-            # All items done → route to done transition (non-body)
+            # All items done → mark loop step completed, route to done transition
+            conn.execute(
+                "UPDATE skillflow_steps SET status = 'completed', "
+                "completed_at = datetime('now'), updated_at = datetime('now') "
+                "WHERE run_id = ? AND step_id = ? AND status = 'pending'",
+                (run["id"], loop_step_id),
+            )
             for t in node.transitions:
                 if t.to and t.to != body_target:
                     return t.to
@@ -1995,6 +2045,14 @@ class SkillFlow:
         for cond in ec.conditions:
             if cond.type == "node_reached":
                 if next_node == cond.node:
+                    if cond.require_completed:
+                        step_row = conn.execute(
+                            "SELECT status FROM skillflow_steps "
+                            "WHERE run_id = ? AND step_id = ?",
+                            (run_id, cond.node),
+                        ).fetchone()
+                        if not step_row or step_row["status"] != "completed":
+                            continue  # step hasn't executed yet, skip
                     results.append(EndResult(status=cond.result, reason=f"Node '{cond.node}' reached"))
             elif cond.type == "max_total_steps":
                 total = conn.execute(
