@@ -25,10 +25,11 @@ CLI commands registered in `~/.local/bin/`:
 | `skillflow-convert` | Convert a skill description → pipeline YAML |
 
 ```bash
-skillflow-lint configs/*.yaml               # one-shot validation
-skillflow-run --graph pipeline.yaml --action next   # start a pipeline (returns JSON)
+skillflow-lint configs/*.yaml                       # one-shot validation
+skillflow-run --graph pipeline.yaml --action start  # start a pipeline (returns JSON)
 skillflow-run --action submit --run-id <id> --result '{"key": "val"}'
-skillflow-convert my_skill.md -o pipeline.yaml
+skillflow-convert --desc "Code review skill..." --action start  # start from inline text
+skillflow-convert --desc-file my_skill.md --action start        # or from a file
 ```
 
 ### PyPI publish
@@ -39,9 +40,17 @@ python3 -m build
 twine upload dist/*
 ```
 
-## Getting Started
+## Two modes
 
-Skillflow runs pipelines in two modes.
+Skillflow has two distinct modes — one for embedding in code, one for LLM agents.
+
+| | Framework mode | Runner mode |
+|---|---|---|
+| **Interface** | Python library (`from skillflow import SkillFlow`) | CLI tools (`skillflow-run`, `skillflow-convert`) |
+| **State** | In-process (or shared SQLite) | Stateless — each CLI call is a fresh process, state in SQLite |
+| **Tool execution** | All tools auto-execute inline | Native tools auto-execute, everything else delegated to the agent |
+| **delegate_tools_to_agent** | `False` (default) | `True` (hardcoded) |
+| **Use case** | Embed skillflow in a host app | LLM agent drives pipelines via shell commands |
 
 ### Framework Mode
 
@@ -68,13 +77,11 @@ while True:
     sf.confirm_step(claimed.token, StepResult(outputs={}, flags={}))
 ```
 
-In framework mode, **all tools auto-execute** inline — skillflow runs native tools and custom tools without involving the host agent.
-
 Config reference: `tests/fixtures/minimal_1step.yaml`.
 
 ### Runner Mode
 
-Runner mode is the **language-agnostic** interface. An LLM agent (or any program) drives a pipeline by calling `skillflow-run` as a CLI tool. Each invocation is a **fresh process** — only the SQLite DB persists state.
+Runner mode is the **language-agnostic** interface for LLM agents. Agents drive pipelines by calling CLI tools — `skillflow-run` and `skillflow-convert`. Each invocation is a **fresh process** that reads state from SQLite, does one thing, prints JSON, and exits. The agent loops: call → parse JSON → act → call again.
 
 Pass `--graph` **once** with `--action start`. The graph path is stored in the DB. All subsequent calls use `--run-id` to reconnect — no `--graph` needed.
 
@@ -136,9 +143,9 @@ while resp.status == "in_progress":
 | `output_dir` | Steps with `output.fixed` | Write expected files here before calling submit |
 | `expected_files` | Steps with `output.fixed` | File names to create (e.g. `["findings.json"]`) |
 | `validation_error` | Submit rejected by validator | Why the previous submit failed — fix and re-submit |
+| `tool_name` | Tool steps | Tool the agent must execute |
+| `tool_params` | Tool steps | Parameters for the tool |
 | `tools` | Agent steps | Write helpers (`write_*`, `create_*`, `append_*`) with format specs |
-
-Runner mode delegates unknown tools to the agent (`resp.tool_name` / `resp.tool_params`). For programmatic use, the same API is available via `SkillTool`.
 
 ## Node Types
 
@@ -313,7 +320,7 @@ sf.register_graph(graph)
 $ skillflow-convert --desc "Code review skill..." --action start
 {"status": "in_progress", "run_id": "abc123", "step": "analyze_skill", "instruction": "..."}
 
-# Submit analysis, continue through design → lint → fix → done (no --desc needed)
+# Submit analysis, continue through design → explain → lint → done (no --desc needed)
 $ skillflow-convert --action submit --run-id abc123 --result '{"analysis": {...}}'
 ```
 

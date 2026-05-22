@@ -166,6 +166,13 @@ class SkillFlow:
                 self._tool_loader._tools_dirs.insert(0, native_dir)
                 self._tool_loader._cache.clear()
                 self._tool_loader._tool_dir_cache.clear()
+        # Register plugin tools (e.g. skillflow_lint)
+        linter_dir = Path(__file__).parent / "plugins" / "linter" / "tools"
+        if linter_dir.exists() and hasattr(self._tool_loader, '_tools_dirs'):
+            if linter_dir not in self._tool_loader._tools_dirs:
+                self._tool_loader._tools_dirs.append(linter_dir)
+                self._tool_loader._cache.clear()
+                self._tool_loader._tool_dir_cache.clear()
 
     def _should_delegate_tool(self, tool_name: str) -> bool:
         """Return True if this tool should be delegated to the agent.
@@ -1831,10 +1838,9 @@ class SkillFlow:
                     """,
                     (row["id"],),
                 )
-                conn.execute(
-                    "UPDATE skillflow_runs SET current_node = NULL WHERE id = ?",
-                    (row["run_id"],),
-                )
+                # Keep current_node — the step was claimed but the worker
+                # died before confirm.  advance_run will re-claim the same step.
+
                 run_ids.add(row["run_id"])
             if stale:
                 conn.execute(

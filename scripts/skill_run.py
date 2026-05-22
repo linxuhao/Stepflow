@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """Stateless CLI runner for skillflow pipelines.
 
-An LLM agent calls this via shell to drive a pipeline step by step.
-Each invocation creates a fresh SkillFlow + SkillTool instance — no
-in-process state. The only shared state is the SQLite DB file.
+Each invocation is a FRESH PROCESS — the only shared state is the SQLite DB.
+An LLM agent drives the pipeline by calling this command, parsing the JSON
+output, acting, and calling again.
 
 Usage:
     # Start a pipeline (pass --graph once)
     skillflow-run --graph pipeline.yaml --action start
 
     # All subsequent calls use --run-id (no --graph needed)
-    skillflow-run --action next --run-id <id>
     skillflow-run --action submit --run-id <id> --result '{"key": "val"}'
     skillflow-run --action approve --run-id <id>
     skillflow-run --action reject --run-id <id> --feedback "reason"
@@ -104,17 +103,16 @@ def _ensure_graph_loaded(sf: SkillFlow, run_id: str) -> str:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Stateless skillflow pipeline runner — an LLM agent calls this "
-                    "via shell to drive a pipeline step by step. "
+        description="Stateless skillflow pipeline runner. "
+                    "Each call is a fresh process — state lives in SQLite. "
+                    "An LLM agent calls this via shell, parses the JSON response, "
+                    "acts, and calls again. "
                     "Use --action start --graph once; all subsequent calls use "
                     "--run-id (the graph path is stored in the DB).",
         epilog=(
             "Examples:\n"
             "  # Start a new run (--graph only on start)\n"
             "  skillflow-run --graph pipeline.yaml --action start\n"
-            "\n"
-            "  # Get the next step (no --graph needed)\n"
-            "  skillflow-run --action next --run-id <id>\n"
             "\n"
             "  # Submit the result (no --graph needed)\n"
             "  skillflow-run --action submit --run-id <id> --result '{\"key\":\"val\"}'\n"
@@ -123,11 +121,17 @@ def main():
             "  skillflow-run --action approve --run-id <id>\n"
             "  skillflow-run --action reject --run-id <id> --feedback \"reason\"\n"
             "\n"
-            "Typical agent loop:\n"
-            "  1. start   → returns {run_id, step, instruction, tools}\n"
-            "  2. submit  → returns {next step} or {status: \"paused\"}\n"
-            "  3. approve → returns {next step after checkpoint}\n"
-            "  4. submit  → ... repeat until status = \"completed\"\n"
+            "  # Reconnect if you lose state (no --graph needed)\n"
+            "  skillflow-run --action next --run-id <id>\n"
+            "\n"
+            "Agent loop:\n"
+            "  1. start    → {status:\"in_progress\", run_id, step, instruction, tools}\n"
+            "  2. submit   → {status:\"in_progress\", ...} or {status:\"paused\"}\n"
+            "     - Tool steps: {status:\"in_progress\", tool_name, tool_params}\n"
+            "       → execute the tool, submit result\n"
+            "     - Checkpoints: {status:\"paused\", checkpoint_label}\n"
+            "       → approve or reject\n"
+            "  3. Repeat until status = \"completed\" or \"failed\"\n"
             "\n"
             "State persists in the SQLite DB (default: ~/.skillflow/runs.db).\n"
             "The graph path is stored in the DB at start time — no need to pass\n"
@@ -141,9 +145,9 @@ def main():
                         help="SQLite DB path (default: ~/.skillflow/runs.db)")
     parser.add_argument("--action", default="next",
                         choices=["start", "next", "submit", "approve", "reject", "abort"],
-                        help="Action: start (create run with --graph), "
-                             "next (advance and claim step), "
-                             "submit (confirm step), "
+                        help="Action: start (create run, --graph required), "
+                             "next (reconnect and claim current step), "
+                             "submit (confirm step with --result), "
                              "approve/reject (checkpoint), abort (cancel run)")
     parser.add_argument("--run-id", default="", help="Run ID from previous JSON response")
     parser.add_argument("--step-id", default="", help="Step ID from response (for approve/reject)")
@@ -152,8 +156,6 @@ def main():
     parser.add_argument("--feedback", default="", help="Feedback message for reject")
     parser.add_argument("--redirect-to", default="",
                         help="Step ID to redirect to on reject (from checkpoint_reject_to in SkillResponse)")
-    parser.add_argument("--delegate-tools", action="store_true",
-                        help="Delegate unknown tools to the agent instead of auto-executing")
     parser.add_argument("--workspace", default=os.path.expanduser("~/.skillflow/workspaces"),
                         help="Workspace base path (default: ~/.skillflow/workspaces)")
     parser.add_argument("--project-id", default="",
@@ -189,7 +191,7 @@ def main():
     sf = SkillFlow(
         str(db_path),
         tool_loader=loader,
-        delegate_tools_to_agent=args.delegate_tools,
+        delegate_tools_to_agent=True,
         workspace_base=args.workspace,
         projects_base=os.path.join(args.workspace, "projects"),
     )

@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Stateless converter wrapper — calls skillflow-run with the fixed converter pipeline.
+"""Stateless converter CLI — calls skillflow-run with the built-in converter pipeline.
+
+Each invocation is a FRESH PROCESS. The only shared state is the SQLite DB.
+Parse the JSON response, act, call again.
 
 Usage:
     skillflow-convert --desc "Code review skill..." --action start
     skillflow-convert --desc-file my_skill.md --action start
     skillflow-convert --action submit --run-id <id> --result '{"analysis": {...}}'
     skillflow-convert --action approve --run-id <id>
+    skillflow-convert --action reject --run-id <id> --feedback "reason"
 """
 
 import argparse
@@ -23,8 +27,10 @@ _PROJECT_ID = "skill-converter"
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Stateless skill-to-pipeline converter — wraps skillflow-run "
-                    "with the built-in skill_converter pipeline.",
+        description="Stateless skill-to-pipeline converter. "
+                    "Each call is a fresh process — state lives in SQLite. "
+                    "Wraps skillflow-run with the built-in skill_converter pipeline. "
+                    "Parse the JSON response, act, call again.",
         epilog=(
             "Examples:\n"
             "  # Start a conversion\n"
@@ -87,7 +93,6 @@ def main():
     cmd = [
         sys.executable, runner,
         "--project-id", _PROJECT_ID,
-        "--delegate-tools",
         "--action", args.action,
     ]
     if args.action == "start":

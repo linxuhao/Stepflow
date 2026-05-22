@@ -381,7 +381,6 @@ class SkillTool:
             checkpoint_reject_to=checkpoint_reject_to,
             instruction=(
                 f"Pipeline paused at checkpoint: {label}\n"
-                f"Call run_skill(action='approve') to continue, "
-                f"or run_skill(action='reject', feedback='...') to request changes."
+                f"Approve to continue, or reject with feedback to request changes."
             ),
         )

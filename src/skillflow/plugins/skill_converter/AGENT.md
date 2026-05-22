@@ -1,39 +1,43 @@
-# skill_converter — Skill-to-Pipeline Converter
+# skillflow-convert — Skill-to-Pipeline Converter
 
-Convert a skill description (markdown) into a valid skillflow pipeline YAML config. The converter is a skillflow pipeline — you interact with it through `run_skill`, same as any other skill.
+Convert a skill description (markdown) into a valid skillflow pipeline YAML config. The converter is itself a skillflow pipeline — you drive it with the `skillflow-convert` CLI, one action per shell command.
 
 ## How to use
 
-```python
-from plugins.skill_converter import setup_converter
+This is a **stateless CLI tool**. Each invocation is a fresh process. The only shared state is the SQLite database. You call it, parse the JSON response, act, call again.
 
-# From a string:
-tool = setup_converter(sf, description="# Code Review Skill\n...")
+```bash
+# 1. Start the conversion
+skillflow-convert --desc "Code review skill..." --action start
+# → {"status":"in_progress", "run_id":"abc123", "step":"analyze_skill", "instruction":"..."}
 
-# Or from a file (easier for agents to edit):
-tool = setup_converter(sf, description_file="skill_description.md")
+# 2. Submit your analysis (no --desc needed — state is in the DB)
+skillflow-convert --action submit --run-id abc123 --result '{"analysis":{...}}'
 
-# tool is a SkillTool pointing at the "skill_converter" graph
+# 3. Submit your YAML design
+skillflow-convert --action submit --run-id abc123 --result '{"pipeline":"name: ..."}'
+
+# 4. Explain the design (then checkpoint pauses for human review)
+skillflow-convert --action submit --run-id abc123 --result '{"explanation":"..."}'
+# → {status:"paused", checkpoint_label:"Design Review"}
+skillflow-convert --action approve --run-id abc123
+
+# 5. Tool step: lint validates the YAML — you execute skillflow_lint, submit result
+# → {status:"in_progress", step:"validate_design", tool_name:"skillflow_lint", ...}
+skillflow-convert --action submit --run-id abc123 --result '{"passed":true,...}'
+
+# 6. If linter fails, the fix step is presented:
+# → {"status":"in_progress", "step":"fix_issues", "instruction":"...linter errors..."}
+
+# 7. Approve or reject checkpoints
+skillflow-convert --action approve --run-id abc123
+skillflow-convert --action reject --run-id abc123 --feedback "reason"
 ```
 
-Then drive it interactively with `run_skill`:
+You can also pass a file instead of inline text:
 
-```
-run_skill(action="next")
-  → {status: "in_progress", step: "analyze_skill", instruction: "You are a pipeline architect...", tools: {...}}
-
-# You (the agent) analyze the skill, produce analysis JSON
-run_skill(action="submit", step="analyze_skill", result={"analysis": {...}})
-
-  → {status: "in_progress", step: "design_graph", instruction: "Design a skillflow graph...", tools: {...}}
-
-# You produce skillflow YAML
-run_skill(action="submit", step="design_graph", result={"pipeline": "name: ..."})
-
-  → [validate_design auto-runs — skillflow_lint checks the YAML]
-  → if passed: {status: "completed", outputs: {...}}
-  → if failed: {status: "in_progress", step: "fix_issues",
-                 instruction: "...linter feedback with errors and suggestions..."}
+```bash
+skillflow-convert --desc-file my_skill.md --action start
 ```
 
 ## Pipeline flow
@@ -43,16 +47,22 @@ analyze_skill     ← you parse the skill → phases, decisions, tools, checkpoi
     ↓
 design_graph      ← you produce skillflow YAML
     ↓
-validate_design   ← auto: skillflow_lint checks the YAML
+explain_design    ← you explain the design (checkpoint: human reviews)
+    ↓
+validate_design   ← skillflow_lint checks the YAML (presented as tool step)
     ↓
   ├─ passed → done → completed
   └─ failed → fix_issues ← you fix errors (linter feedback in instruction)
                   ↓
-            validate_fix ← auto: re-check
+            validate_fix ← re-check (presented as tool step)
                   ↓
               ├─ passed → done → completed
               └─ failed → fix_issues (up to 3 attempts)
 ```
+
+Tool steps (`validate_design`, `validate_fix`) are presented to you with `tool_name` and `tool_params` — you execute the tool and submit the result, just like any other step.
+
+`explain_design` is a checkpoint step. The pipeline pauses after it for human review before proceeding to validation.
 
 ## Step details
 
@@ -86,6 +96,14 @@ validate_design   ← auto: skillflow_lint checks the YAML
 - Terminal nodes need `end_conditions`
 - Checkpoint steps have `checkpoint: true` + checkpoint transitions
 
+### explain_design
+
+**Instruction**: "Explain the design..." Context includes your analysis and YAML from previous steps.
+
+**You produce**: A markdown explanation of the pipeline design.
+
+This is a **checkpoint** step. After you submit, the pipeline pauses for human review. The human can approve (continue to validation) or reject (go back to `design_graph` to revise).
+
 ### fix_issues
 
 **Instruction**: "Fix the linter errors..." Context includes your broken YAML + **linter feedback**:
@@ -104,28 +122,13 @@ validate_design   ← auto: skillflow_lint checks the YAML
 
 ## Getting the result
 
-When the converter completes, copy the generated YAML to your skill folder:
+When the converter completes, the generated pipeline YAML is at:
 
-```python
-from plugins.skill_converter import save_output
-
-path = save_output(sf, tool.run_id, output_file="skills/review/skill_pipeline.yaml")
-# → Path("skills/review/skill_pipeline.yaml")
-
-# Now run it:
-from skillflow.graph import PipelineGraph
-graph = PipelineGraph.from_yaml(str(path))
-sf.register_graph(graph)
-runner = SkillTool(sf, graph.name)
-runner(action="next")
+```
+~/.skillflow/workspaces/skill-converter/.../skill_pipeline.yaml
 ```
 
-The agent's skill folder now has both files:
-```
-skills/review/
-├── skill_description.md     ← input (you wrote this)
-└── skill_pipeline.yaml      ← output (converter produced this)
-```
+Copy it to wherever the skill pipeline should live.
 
 ## Reference: SkillFlow YAML Structure
 

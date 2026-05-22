@@ -1,7 +1,7 @@
 """Skill Converter — converts skill descriptions into skillflow pipeline configs.
 
-Runs a fixed converter pipeline (skill_converter.yaml) where each agent
-step is executed by the provided SkillTool (which delegates to the host LLM).
+Runs a fixed converter pipeline (skill_converter.yaml). Agents drive it via
+the ``skillflow-convert`` CLI — each call is a fresh process.
 The linter's skillflow_lint tool provides the validation feedback loop.
 """
 
@@ -11,7 +11,7 @@ from skillflow.plugins.skill_converter.converter import setup_converter, get_out
 
 
 def load_agent_guide() -> str:
-    """Return the AGENT.md content — usage guide for LLM agents using the converter."""
+    """Return the AGENT.md content — usage guide for LLM agents using skillflow-convert CLI."""
     return (Path(__file__).parent / "AGENT.md").read_text(encoding="utf-8")
 
 
