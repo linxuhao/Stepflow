@@ -92,9 +92,13 @@ class PromptAssembler:
 
         # Expected output files
         expected_files = inputs.get("_expected_files", [])
+        output_dir = inputs.get("_output_dir", "")
         if expected_files:
             files_list = "\n".join(f"- `{f}`" for f in expected_files)
-            parts.append(f"Write output files to the output directory:\n{files_list}")
+            if output_dir:
+                parts.append(f"Write output files to the staging directory (`{output_dir}/`):\n{files_list}")
+            else:
+                parts.append(f"Write output files to the output directory:\n{files_list}")
 
         # Output format hints from tool schemas (write_* / create_* tools)
         tool_schemas = inputs.get("_tool_schemas", {})

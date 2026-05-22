@@ -140,7 +140,7 @@ while resp.status == "in_progress":
 
 | Field | When present | Meaning |
 |-------|-------------|---------|
-| `output_dir` | Steps with `output.fixed` | Write expected files here before calling submit |
+| `output_dir` | Steps with `output.fixed` | `.tmp` staging dir — write expected files here; skillflow promotes them on submit |
 | `expected_files` | Steps with `output.fixed` | File names to create (e.g. `["findings.json"]`) |
 | `validation_error` | Submit rejected by validator | Why the previous submit failed — fix and re-submit |
 | `tool_name` | Tool steps | Tool the agent must execute |

@@ -877,17 +877,12 @@ def test_crash_mid_pipeline_recovery_from_yaml(sf_tmp):
     # Recover stale claims
     sf.recover_stale_claims(stale_threshold_seconds=-1)
 
-    # After recovery: run is running but last completed step is "draft"
-    # (a checkpoint step). advance_run will re-pause the run.
+    # After recovery: run is still running, current_node is preserved
+    # (publish). advance_run re-claims the crashed step.
     run = sf.get_run(run_id)
     assert run["status"] == "running"
 
-    # Advance re-pauses (checkpoint on draft), then resume
-    assert sf.advance_run(run_id) is None
-    assert sf.get_run(run_id)["status"] == "paused"
-    sf.resume_run(run_id)
-
-    # Now advance should re-offer publish
+    # Advance re-claims publish (the step that was lost)
     next_node = sf.advance_run(run_id)
     assert next_node == "publish"
 

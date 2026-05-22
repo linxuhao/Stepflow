@@ -56,7 +56,7 @@ Agent                         skillflow-run
   "validation_error": ""
 }
 ```
-If `expected_files` is non-empty, **write those files to `output_dir`** before calling `submit`. Use the `tools` (write_*/create_*/append_* helpers) to understand the expected format for each file. Call `submit` with your result to advance.
+If `expected_files` is non-empty, **write those files to `output_dir`** before calling `submit`. The `output_dir` is a `.tmp` staging directory — skillflow promotes files from `.tmp/` to the final step directory on successful submit. Use the `tools` (write_*/create_*/append_* helpers) to understand the expected format for each file. Call `submit` with your result to advance.
 
 If `validation_error` is non-empty, the previous `submit` was rejected. Fix the issue described and re-submit.
 

@@ -66,7 +66,7 @@ def test_recover_stale_claims_no_stale_steps(sf: SkillFlow):
     assert recovered == []
 
 
-def test_recover_stale_clears_current_node(sf: SkillFlow):
+def test_recover_stale_keeps_current_node(sf: SkillFlow):
     graph = PipelineGraph(
         name="test", begin="a",
         steps=[_agent("a", [_trans("b")]), _agent("b", [])],
@@ -79,7 +79,8 @@ def test_recover_stale_clears_current_node(sf: SkillFlow):
 
     sf.recover_stale_claims(stale_threshold_seconds=-1)
     run = sf.get_run(run_id)
-    assert run["current_node"] is None
+    # current_node is kept so advance_run re-claims the crashed step
+    assert run["current_node"] == "a"
 
 
 def test_recover_stale_claims_module_function(sf_tmp: SkillFlow):
